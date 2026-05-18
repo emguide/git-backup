@@ -1,4 +1,4 @@
-# git-auto-sync
+# git-backup
 
 A lightweight Linux daemon that watches directories and automatically commits and pushes changes to git after a configurable period of inactivity.
 
@@ -23,18 +23,18 @@ pip3 install watchdog
 
 ## Installation
 
-1. Copy the script to your local bin:
+1. Clone depot and copy the script to your local bin:
 
 ```bash
-cp git-auto-sync ~/.local/bin/
-chmod +x ~/.local/bin/git-auto-sync
+cp git-backup ~/.local/bin/
+chmod +x ~/.local/bin/git-backup
 ```
 
 2. Create the config directory and edit your config:
 
 ```bash
-mkdir -p ~/.config/git-auto-sync
-cp config.json ~/.config/git-auto-sync/config.json
+mkdir -p ~/.config/git-backup
+cp config.json ~/.config/git-backup/config.json
 # Edit the paths inside config.json
 ```
 
@@ -42,9 +42,9 @@ cp config.json ~/.config/git-auto-sync/config.json
 
 ```bash
 mkdir -p ~/.config/systemd/user
-cp git-auto-sync.service ~/.config/systemd/user/
+cp git-backup.service ~/.config/systemd/user/
 systemctl --user daemon-reload
-systemctl --user enable --now git-auto-sync
+systemctl --user enable --now git-backup
 ```
 
 ### Persistence After Logout
@@ -57,7 +57,7 @@ loginctl enable-linger "$USER"
 
 ## Configuration
 
-Config file location: `~/.config/git-auto-sync/config.json`
+Config file location: `~/.config/git-backup/config.json`
 
 ### Simple list (uses default delay)
 
@@ -101,13 +101,13 @@ Config file location: `~/.config/git-auto-sync/config.json`
 
 ```bash
 # With default config
-git-auto-sync
+git-backup
 
 # With custom config
-git-auto-sync -c /path/to/config.json
+git-backup -c /path/to/config.json
 
 # Verbose logging
-git-auto-sync -v
+git-backup -v
 ```
 
 ## How It Works
@@ -124,16 +124,16 @@ git-auto-sync -v
 
 ```bash
 # Follow logs
-journalctl --user -u git-auto-sync -f
+journalctl --user -u git-backup -f
 
 # Since boot
-journalctl --user -u git-auto-sync -b
+journalctl --user -u git-backup -b
 ```
 
 ## Updating
 
-Just overwrite `~/.local/bin/git-auto-sync` and restart:
+Just overwrite `~/.local/bin/git-backup` and restart:
 
 ```bash
-systemctl --user restart git-auto-sync
+systemctl --user restart git-backup
 ```
