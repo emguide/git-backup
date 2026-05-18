@@ -91,6 +91,8 @@ class GitBackup:
                     check=True,
                     capture_output=True,
                     text=True,
+                    stdin=subprocess.DEVNULL,
+                    env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
                 )
                 if add_result.stdout:
                     self.logger.debug("git add stdout: %s", add_result.stdout.strip())
@@ -104,6 +106,8 @@ class GitBackup:
                     cwd=self.path,
                     capture_output=True,
                     text=True,
+                    stdin=subprocess.DEVNULL,
+                    env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
                 )
                 has_staged = diff_result.returncode != 0
                 if has_staged:
@@ -116,6 +120,8 @@ class GitBackup:
                     cwd=self.path,
                     capture_output=True,
                     text=True,
+                    stdin=subprocess.DEVNULL,
+                    env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
                 )
                 if log_result.returncode != 0:
                     self.logger.debug("git rev-list stderr: %s", log_result.stderr.strip())
@@ -136,6 +142,8 @@ class GitBackup:
                         check=True,
                         capture_output=True,
                         text=True,
+                        stdin=subprocess.DEVNULL,
+                        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
                     )
                     if commit_result.stdout:
                         self.logger.debug("git commit stdout: %s", commit_result.stdout.strip())
@@ -154,6 +162,8 @@ class GitBackup:
                     cwd=self.path,
                     capture_output=True,
                     text=True,
+                    stdin=subprocess.DEVNULL,
+                    env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
                 )
                 if push_result.stdout:
                     self.logger.debug("git push stdout: %s", push_result.stdout.strip())
