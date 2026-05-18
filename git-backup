@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-git-auto-sync
+git-backup
 
 Watches configured directories and automatically commits/pushes changes to git
 after a period of inactivity. Never pulls.
@@ -27,7 +27,7 @@ except ImportError:
     print("  Install: sudo apt install python3-watchdog  (or: pip3 install watchdog)", file=sys.stderr)
     sys.exit(1)
 
-DEFAULT_CONFIG_PATH = Path.home() / ".config" / "git-auto-sync" / "config.json"
+DEFAULT_CONFIG_PATH = Path.home() / ".config" / "git-backup" / "config.json"
 DEFAULT_DELAY = 300  # seconds
 
 
@@ -39,7 +39,7 @@ class GitBackup:
         self.timer: threading.Timer | None = None
         self.lock = threading.Lock()
         self.sync_lock = threading.Lock()
-        self.logger = logging.getLogger(f"git-auto-sync.{self.path.name}")
+        self.logger = logging.getLogger(f"git-backup.{self.path.name}")
 
     def on_change(self, event: FileSystemEvent | None = None):
         """Called when a file system change is detected. Resets the debounce timer."""
@@ -155,7 +155,7 @@ def main():
     )
     parser.add_argument(
         "-c", "--config", type=Path, default=DEFAULT_CONFIG_PATH,
-        help="Path to config file (default: ~/.config/git-auto-sync/config.json)"
+        help="Path to config file (default: ~/.config/git-backup/config.json)"
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     args = parser.parse_args()

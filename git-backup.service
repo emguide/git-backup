@@ -1,11 +1,11 @@
 [Unit]
-Description=Git Auto Sync Daemon
+Description=Git Backup Sync Daemon
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/git-auto-sync
+ExecStart=%h/.local/bin/git-backup
 Restart=on-failure
 RestartSec=10
 
