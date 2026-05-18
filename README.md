@@ -34,7 +34,7 @@ chmod +x ~/.local/bin/git-backup
 
 ```bash
 mkdir -p ~/.config/git-backup
-cp example.config.json ~/.config/git-backup/config.json
+cp ~/.local/bin/git-backup/example.config.json ~/.config/git-backup/config.json
 # Edit the paths inside config.json
 ```
 
