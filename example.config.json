@@ -1,6 +1,12 @@
 {
   "directories": [
-    "/home/YOUR_USER/projects/example"
+    "/home/YOUR_USER/projects/example",
+    {
+      "path": "/home/YOUR_USER/projects/notes",
+      "delay_seconds": 600,
+      "branch": "main",
+      "exclude": ["node_modules", ".cache", "*.log"]
+    }
   ],
   "default_delay_seconds": 300
 }

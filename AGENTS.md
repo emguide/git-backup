@@ -63,7 +63,8 @@ Full schema:
     {
       "path": "/home/user/projects/notes",
       "delay_seconds": 600,
-      "branch": "main"
+      "branch": "main",
+      "exclude": ["node_modules", ".cache", "*.log"]
     }
   ],
   "default_delay_seconds": 300
@@ -76,6 +77,7 @@ Full schema:
 | `path` | `string` | — | Directory path (when using object form). |
 | `delay_seconds` | `number` | `default_delay_seconds` | Inactivity timer in seconds. |
 | `branch` | `string \| null` | `null` | If set, pushes explicitly to `origin <branch>`. |
+| `exclude` | `string[]` | `[]` | Glob patterns for subpaths to ignore. Matches relative path, any parent directory name, or the file name itself. |
 | `default_delay_seconds` | `number` | `300` | Fallback delay for entries that don't specify one. |
 
 ## Running Locally
@@ -134,3 +136,4 @@ If you add tests, a minimal `pytest` setup would be appropriate. The project has
 - There is no validation of the git remote or repository contents beyond checking that `.git` exists.
 - Because the script **never pulls**, it avoids the risks associated with automatically merging remote changes.
 - Events inside `.git/` are explicitly ignored to prevent infinite loops caused by git's own file modifications.
+- The `exclude` option provides an additional layer of filtering on top of the built-in `.git` ignore.

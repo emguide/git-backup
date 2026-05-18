@@ -9,6 +9,7 @@ Linux only. Requires: python3-watchdog
 """
 
 import argparse
+import fnmatch
 import json
 import logging
 import os
@@ -32,10 +33,17 @@ DEFAULT_DELAY = 300  # seconds
 
 
 class GitBackup:
-    def __init__(self, path: Path, delay_seconds: int, branch: str | None = None):
+    def __init__(
+        self,
+        path: Path,
+        delay_seconds: int,
+        branch: str | None = None,
+        exclude: list[str] | None = None,
+    ):
         self.path = path.resolve()
         self.delay_seconds = delay_seconds
         self.branch = branch
+        self.exclude = exclude or []
         self.timer: threading.Timer | None = None
         self.lock = threading.Lock()
         self.sync_lock = threading.Lock()
@@ -150,6 +158,31 @@ class EventHandler(FileSystemEventHandler):
     def __init__(self, backup: GitBackup):
         self.backup = backup
 
+    def _is_excluded(self, src_path: str) -> bool:
+        if not self.backup.exclude:
+            return False
+        try:
+            rel = Path(src_path).relative_to(self.backup.path)
+        except ValueError:
+            return False
+
+        rel_str = str(rel)
+        parts = rel.parts
+
+        for pattern in self.backup.exclude:
+            # Match the full relative path
+            if fnmatch.fnmatch(rel_str, pattern):
+                return True
+            # Match any directory component
+            for part in parts[:-1]:
+                if fnmatch.fnmatch(part, pattern):
+                    return True
+            # Match the file / directory name itself
+            if fnmatch.fnmatch(rel.name, pattern):
+                return True
+
+        return False
+
     def on_any_event(self, event: FileSystemEvent):
         self.backup.logger.debug(
             "Raw event: type=%s src=%s is_directory=%s",
@@ -163,8 +196,11 @@ class EventHandler(FileSystemEventHandler):
         if ".git" in parts:
             self.backup.logger.debug("Ignored: path contains .git: %s", event.src_path)
             return
-        if event.event_type == "opened":
-            self.backup.logger.debug("Ignored: event type is 'opened': %s", event.src_path)
+        if event.event_type in ("opened", "closed_no_write"):
+            self.backup.logger.debug("Ignored: event type is '%s': %s", event.event_type, event.src_path)
+            return
+        if self._is_excluded(event.src_path):
+            self.backup.logger.debug("Ignored: path excluded: %s", event.src_path)
             return
 
         self.backup.on_change(event)
@@ -233,6 +269,13 @@ def main():
             path = Path(entry["path"]).expanduser()
             delay = entry.get("delay_seconds", default_delay)
             branch = entry.get("branch")
+            exclude = entry.get("exclude")
+            if exclude is not None and not isinstance(exclude, list):
+                logging.warning(
+                    "Invalid 'exclude' at index %d (must be a list), skipping: %r",
+                    idx, entry,
+                )
+                continue
         else:
             logging.warning("Invalid config entry at index %d: %r", idx, entry)
             continue
@@ -242,11 +285,11 @@ def main():
             continue
 
         logging.debug(
-            "Config entry %d: path=%s delay=%s branch=%s",
-            idx, path, delay, branch,
+            "Config entry %d: path=%s delay=%s branch=%s exclude=%s",
+            idx, path, delay, branch, exclude,
         )
 
-        backup = GitBackup(path, delay, branch)
+        backup = GitBackup(path, delay, branch, exclude)
         backups.append(backup)
 
         handler = EventHandler(backup)
@@ -259,7 +302,10 @@ def main():
             logging.error("Failed to start watcher for %s: %s", path, e)
             continue
 
-        logging.info("Watching %s (delay=%ds branch=%s)", path, delay, branch or "default")
+        logging.info(
+            "Watching %s (delay=%ds branch=%s exclude=%r)",
+            path, delay, branch or "default", exclude or [],
+        )
 
     if not backups:
         logging.error("No valid directories to watch")

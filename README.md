@@ -92,7 +92,8 @@ Config file location: `~/.config/git-backup/config.json`
     {
       "path": "/home/alice/projects/notes",
       "delay_seconds": 600,
-      "branch": "main"
+      "branch": "main",
+      "exclude": ["node_modules", ".cache", "*.log"]
     }
   ],
   "default_delay_seconds": 300
@@ -104,6 +105,7 @@ Config file location: `~/.config/git-backup/config.json`
 | `path` | Directory to watch (must already be a git repo with a remote configured) |
 | `delay_seconds` | Seconds of inactivity after the last change before committing (default: `300`) |
 | `branch` | Optional branch to push explicitly. If omitted, `git push` uses repo defaults |
+| `exclude` | List of glob patterns for subpaths to ignore (e.g. `["node_modules", "*.log"]`) |
 | `default_delay_seconds` | Default delay for entries that don't specify one |
 
 ## Running Manually
@@ -128,6 +130,7 @@ git-backup -v
    - Commits with a timestamp message if there are changes
    - Pushes to the configured remote
 4. Events inside `.git/` are ignored so git operations don't loop
+5. Events matching `exclude` patterns are also ignored
 
 ## Viewing Logs
 
