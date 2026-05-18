@@ -105,28 +105,43 @@ class GitBackup:
                     capture_output=True,
                     text=True,
                 )
-                if diff_result.returncode == 0:
-                    self.logger.info("No changes to commit")
-                    return
-                else:
+                has_staged = diff_result.returncode != 0
+                if has_staged:
                     self.logger.debug("git diff --cached returned %d", diff_result.returncode)
 
-                # Commit
-                timestamp = time.strftime("%Y-%m-%d %H:%M:%S %z")
-                commit_msg = f"auto-sync: {timestamp}"
-                self.logger.debug("Running: git commit -m '%s'", commit_msg)
-                commit_result = subprocess.run(
-                    ["git", "commit", "-m", commit_msg],
+                # Check if there are unpushed commits
+                self.logger.debug("Running: git rev-list --count @{upstream}..HEAD")
+                log_result = subprocess.run(
+                    ["git", "rev-list", "--count", "@{upstream}..HEAD"],
                     cwd=self.path,
-                    check=True,
                     capture_output=True,
                     text=True,
                 )
-                if commit_result.stdout:
-                    self.logger.debug("git commit stdout: %s", commit_result.stdout.strip())
-                if commit_result.stderr:
-                    self.logger.debug("git commit stderr: %s", commit_result.stderr.strip())
-                self.logger.info("Committed: %s", commit_msg)
+                if log_result.returncode != 0:
+                    self.logger.debug("git rev-list stderr: %s", log_result.stderr.strip())
+                has_unpushed = log_result.returncode == 0 and log_result.stdout.strip() not in ("", "0")
+
+                if not has_staged and not has_unpushed:
+                    self.logger.info("No changes to commit or push")
+                    return
+
+                if has_staged:
+                    # Commit
+                    timestamp = time.strftime("%Y-%m-%d %H:%M:%S %z")
+                    commit_msg = f"auto-sync: {timestamp}"
+                    self.logger.debug("Running: git commit -m '%s'", commit_msg)
+                    commit_result = subprocess.run(
+                        ["git", "commit", "-m", commit_msg],
+                        cwd=self.path,
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    )
+                    if commit_result.stdout:
+                        self.logger.debug("git commit stdout: %s", commit_result.stdout.strip())
+                    if commit_result.stderr:
+                        self.logger.debug("git commit stderr: %s", commit_result.stderr.strip())
+                    self.logger.info("Committed: %s", commit_msg)
 
                 # Push (never pull)
                 push_cmd = ["git", "push"]
