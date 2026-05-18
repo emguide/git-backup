@@ -26,7 +26,7 @@ pip3 install watchdog
 1. Clone depot and copy the script to your local bin:
 
 ```bash
-cp git-backup ~/.local/bin/
+mv git-backup ~/.local/bin/
 chmod +x ~/.local/bin/git-backup
 ```
 
@@ -34,7 +34,7 @@ chmod +x ~/.local/bin/git-backup
 
 ```bash
 mkdir -p ~/.config/git-backup
-cp config.json ~/.config/git-backup/config.json
+cp example.config.json ~/.config/git-backup/config.json
 # Edit the paths inside config.json
 ```
 
