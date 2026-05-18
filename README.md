@@ -26,6 +26,7 @@ pip3 install watchdog
 1. Clone depot and copy the script to your local bin:
 
 ```bash
+git clone https://github.com/emguide/git-backup.git
 mv git-backup ~/.local/bin/
 chmod +x ~/.local/bin/git-backup
 ```
