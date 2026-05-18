@@ -222,6 +222,9 @@ def setup_logging(verbose: bool):
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+    if verbose:
+        # Keep our own debug output but silence noisy third-party libraries
+        logging.getLogger("watchdog").setLevel(logging.INFO)
 
 
 def main():
