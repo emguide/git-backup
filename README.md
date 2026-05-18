@@ -27,7 +27,8 @@ pip3 install watchdog
 
 ```bash
 git clone https://github.com/emguide/git-backup.git
-mv git-backup ~/.local/bin/
+cd git-backup
+cp git-backup ~/.local/bin/
 chmod +x ~/.local/bin/git-backup
 ```
 
@@ -35,7 +36,7 @@ chmod +x ~/.local/bin/git-backup
 
 ```bash
 mkdir -p ~/.config/git-backup
-cp ~/.local/bin/git-backup/example.config.json ~/.config/git-backup/config.json
+cp example.config.json ~/.config/git-backup/config.json
 # Edit the paths inside config.json
 ```
 
