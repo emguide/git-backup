@@ -23,30 +23,37 @@ pip3 install watchdog
 
 ## Installation
 
-1. Clone depot and copy the script to your local bin:
+1. Clone the repo:
 
 ```bash
 git clone https://github.com/emguide/git-backup.git
 cd git-backup
-cp git-backup ~/.local/bin/
-chmod +x ~/.local/bin/git-backup
 ```
 
-2. Create the config directory and edit your config:
+2. Run the install script:
 
 ```bash
-mkdir -p ~/.config/git-backup
-cp example.config.json ~/.config/git-backup/config.json
-# Edit the paths inside config.json
+./install.sh install
 ```
 
-3. Install the systemd user service:
+This copies `git-backup` to `~/.local/bin/`, installs the example config (if missing), and enables the systemd user service.
+
+3. Edit the config to add your directories:
 
 ```bash
-mkdir -p ~/.config/systemd/user
-cp git-backup.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now git-backup
+# ~/.config/git-backup/config.json
+```
+
+> **Manual install**: If you prefer, you can copy the files by hand — see the earlier steps in the git history or the `install.sh` script itself.
+
+### Other install script commands
+
+```bash
+./install.sh start     # Start the systemd service
+./install.sh stop      # Stop the systemd service
+./install.sh update    # Reinstall binary and restart service
+./install.sh status    # Check service status
+./install.sh uninstall # Stop and remove binary/service
 ```
 
 ### Persistence After Logout
@@ -54,7 +61,7 @@ systemctl --user enable --now git-backup
 By default, systemd user services stop when you log out. To keep the daemon running:
 
 ```bash
-loginctl enable-linger "$USER"
+sudo loginctl enable-linger "$USER"
 ```
 
 ## Configuration
@@ -134,8 +141,9 @@ journalctl --user -u git-backup -b
 
 ## Updating
 
-Just overwrite `~/.local/bin/git-backup` and restart:
+Pull the latest changes and run the update command:
 
 ```bash
-systemctl --user restart git-backup
+git pull
+./install.sh update
 ```
