@@ -1,8 +1,8 @@
-# git-auto-sync — Agent Guide
+# git-backup — Agent Guide
 
 ## Project Overview
 
-`git-auto-sync` is a lightweight Linux daemon written in Python 3 that watches configured directories and automatically commits and pushes changes to git after a configurable period of inactivity. It **only commits and pushes** — it never pulls or merges.
+`git-backup` is a lightweight Linux daemon written in Python 3 that watches configured directories and automatically commits and pushes changes to git after a configurable period of inactivity. It **only commits and pushes** — it never pulls or merges.
 
 The project is intentionally minimal: a single executable Python script, an example JSON config, and a systemd user service unit file.
 
@@ -10,9 +10,10 @@ The project is intentionally minimal: a single executable Python script, an exam
 
 | File | Purpose |
 |------|---------|
-| `git-auto-sync` | Main executable Python script (no `.py` extension). Contains all daemon logic. |
-| `config.json` | Example configuration file. |
-| `git-auto-sync.service` | systemd user service unit template. |
+| `git-backup` | Main executable Python script (no `.py` extension). Contains all daemon logic. |
+| `example.config.json` | Example configuration file. |
+| `git-backup.service` | systemd user service unit template. |
+| `install.sh` | Bash helper script for install / update / uninstall / status. |
 | `README.md` | Human-facing documentation with installation and usage instructions. |
 
 ## Technology Stack
@@ -49,7 +50,7 @@ The script is organized around two classes and a small CLI bootstrap:
 
 ## Configuration
 
-The daemon expects a JSON config file. Default path: `~/.config/git-auto-sync/config.json`.
+The daemon expects a JSON config file. Default path: `~/.config/git-backup/config.json`.
 
 A top-level list is accepted as shorthand for `{"directories": [...]}`.
 
@@ -84,20 +85,22 @@ Full schema:
 pip install watchdog
 
 # Run with the example config
-./git-auto-sync -c config.json -v
+./git-backup -c example.config.json -v
 
 # Run with default config path
-./git-auto-sync -v
+./git-backup -v
 ```
 
 ## Deployment
 
-There is no automated deployment or CI pipeline. Installation is manual:
+There is no automated deployment or CI pipeline. Run `./install.sh install` to copy the binary, install the example config, and enable the systemd user service. Start the service afterward with `./install.sh start`. Other commands: `./install.sh stop`, `./install.sh update`, `./install.sh status`, and `./install.sh uninstall`.
 
-1. Copy `git-auto-sync` to `~/.local/bin/` and ensure it is executable.
-2. Copy `config.json` to `~/.config/git-auto-sync/config.json` and edit paths.
-3. Copy `git-auto-sync.service` to `~/.config/systemd/user/`.
-4. Run `systemctl --user daemon-reload`, then `systemctl --user enable --now git-auto-sync`.
+For a manual install, the steps are the same as what the script does:
+
+1. Copy `git-backup` to `~/.local/bin/` and ensure it is executable.
+2. Copy `example.config.json` to `~/.config/git-backup/config.json` and edit paths.
+3. Copy `git-backup.service` to `~/.config/systemd/user/`.
+4. Run `systemctl --user daemon-reload`, then `systemctl --user enable --now git-backup`.
 
 For persistence after logout:
 ```bash
@@ -106,14 +109,14 @@ loginctl enable-linger "$USER"
 
 View logs:
 ```bash
-journalctl --user -u git-auto-sync -f
+journalctl --user -u git-backup -f
 ```
 
 ## Code Style Guidelines
 
 - **Type hints**: Used throughout (`path: Path`, `branch: str | None = None`).
 - **Path handling**: Prefer `pathlib.Path` over string paths.
-- **Logging**: Use the standard `logging` module. Loggers are namespaced per directory (`git-auto-sync.{dirname}`).
+- **Logging**: Use the standard `logging` module. Loggers are namespaced per directory (`git-backup.{dirname}`).
 - **Subprocess calls**: Always use `subprocess.run(..., check=True, capture_output=True, text=True)` — never `shell=True`.
 - **Thread safety**: Shared timer state is protected with `threading.Lock`.
 - **No external formatting/linting config**: Follow PEP 8 and the existing visual style.

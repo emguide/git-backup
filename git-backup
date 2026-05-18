@@ -43,13 +43,24 @@ class GitBackup:
 
     def on_change(self, event: FileSystemEvent | None = None):
         """Called when a file system change is detected. Resets the debounce timer."""
+        if event is not None:
+            self.logger.debug(
+                "on_change triggered: %s | src=%s | is_directory=%s",
+                event.event_type,
+                event.src_path,
+                event.is_directory,
+            )
+        else:
+            self.logger.debug("on_change triggered: startup sync (no event)")
+
         with self.lock:
             if self.timer is not None:
+                self.logger.debug("Cancelling existing timer")
                 self.timer.cancel()
             self.timer = threading.Timer(self.delay_seconds, self._commit)
             self.timer.daemon = True
             self.timer.start()
-            self.logger.debug("Change detected, timer reset to %ds", self.delay_seconds)
+            self.logger.debug("Timer started: %ds", self.delay_seconds)
 
     def _commit(self):
         """Perform git add, commit (if needed), and push."""
@@ -60,20 +71,26 @@ class GitBackup:
             self.logger.info("Running sync...")
 
             if not (self.path / ".git").exists():
-                self.logger.error("Not a git repository, skipping")
+                self.logger.error("Not a git repository, skipping: %s", self.path)
                 return
 
             try:
                 # Stage all changes (including deletes)
-                subprocess.run(
+                self.logger.debug("Running: git add -A (cwd=%s)", self.path)
+                add_result = subprocess.run(
                     ["git", "add", "-A"],
                     cwd=self.path,
                     check=True,
                     capture_output=True,
                     text=True,
                 )
+                if add_result.stdout:
+                    self.logger.debug("git add stdout: %s", add_result.stdout.strip())
+                if add_result.stderr:
+                    self.logger.debug("git add stderr: %s", add_result.stderr.strip())
 
                 # Check if there is anything staged
+                self.logger.debug("Running: git diff --cached --quiet")
                 diff_result = subprocess.run(
                     ["git", "diff", "--cached", "--quiet"],
                     cwd=self.path,
@@ -83,23 +100,31 @@ class GitBackup:
                 if diff_result.returncode == 0:
                     self.logger.info("No changes to commit")
                     return
+                else:
+                    self.logger.debug("git diff --cached returned %d", diff_result.returncode)
 
                 # Commit
                 timestamp = time.strftime("%Y-%m-%d %H:%M:%S %z")
                 commit_msg = f"auto-sync: {timestamp}"
-                subprocess.run(
+                self.logger.debug("Running: git commit -m '%s'", commit_msg)
+                commit_result = subprocess.run(
                     ["git", "commit", "-m", commit_msg],
                     cwd=self.path,
                     check=True,
                     capture_output=True,
                     text=True,
                 )
+                if commit_result.stdout:
+                    self.logger.debug("git commit stdout: %s", commit_result.stdout.strip())
+                if commit_result.stderr:
+                    self.logger.debug("git commit stderr: %s", commit_result.stderr.strip())
                 self.logger.info("Committed: %s", commit_msg)
 
                 # Push (never pull)
                 push_cmd = ["git", "push"]
                 if self.branch:
                     push_cmd.extend(["origin", self.branch])
+                self.logger.debug("Running: %s", " ".join(push_cmd))
 
                 push_result = subprocess.run(
                     push_cmd,
@@ -107,10 +132,14 @@ class GitBackup:
                     capture_output=True,
                     text=True,
                 )
+                if push_result.stdout:
+                    self.logger.debug("git push stdout: %s", push_result.stdout.strip())
+                if push_result.stderr:
+                    self.logger.debug("git push stderr: %s", push_result.stderr.strip())
                 if push_result.returncode == 0:
                     self.logger.info("Push successful")
                 else:
-                    self.logger.error("Push failed: %s", push_result.stderr.strip())
+                    self.logger.error("Push failed (rc=%d): %s", push_result.returncode, push_result.stderr.strip())
 
             except subprocess.CalledProcessError as e:
                 err = (e.stderr or e.stdout or str(e)).strip()
@@ -122,12 +151,22 @@ class EventHandler(FileSystemEventHandler):
         self.backup = backup
 
     def on_any_event(self, event: FileSystemEvent):
+        self.backup.logger.debug(
+            "Raw event: type=%s src=%s is_directory=%s",
+            event.event_type,
+            event.src_path,
+            event.is_directory,
+        )
+
         # Ignore git's own internals and temp files
         parts = Path(event.src_path).parts
         if ".git" in parts:
+            self.backup.logger.debug("Ignored: path contains .git: %s", event.src_path)
             return
         if event.event_type == "opened":
+            self.backup.logger.debug("Ignored: event type is 'opened': %s", event.src_path)
             return
+
         self.backup.on_change(event)
 
 
@@ -169,12 +208,15 @@ def main():
 
     try:
         config = load_config(args.config)
+        logging.debug("Loaded config: %s", config)
     except (json.JSONDecodeError, OSError) as e:
         logging.error("Failed to load config: %s", e)
         sys.exit(1)
 
     default_delay = config.get("default_delay_seconds", DEFAULT_DELAY)
     directories = config.get("directories", [])
+    logging.debug("default_delay_seconds=%s directories=%s", default_delay, directories)
+
     if not directories:
         logging.error("No directories configured")
         sys.exit(1)
@@ -182,7 +224,7 @@ def main():
     backups: list[GitBackup] = []
     observers: list[Observer] = []
 
-    for entry in directories:
+    for idx, entry in enumerate(directories):
         if isinstance(entry, str):
             path = Path(entry).expanduser()
             delay = default_delay
@@ -192,29 +234,43 @@ def main():
             delay = entry.get("delay_seconds", default_delay)
             branch = entry.get("branch")
         else:
-            logging.warning("Invalid config entry: %r", entry)
+            logging.warning("Invalid config entry at index %d: %r", idx, entry)
             continue
 
         if not path.is_dir():
             logging.warning("Directory does not exist, skipping: %s", path)
             continue
 
+        logging.debug(
+            "Config entry %d: path=%s delay=%s branch=%s",
+            idx, path, delay, branch,
+        )
+
         backup = GitBackup(path, delay, branch)
         backups.append(backup)
 
         handler = EventHandler(backup)
         observer = Observer()
-        observer.schedule(handler, str(path), recursive=True)
-        observer.start()
-        observers.append(observer)
+        try:
+            observer.schedule(handler, str(path), recursive=True)
+            observer.start()
+            observers.append(observer)
+        except OSError as e:
+            logging.error("Failed to start watcher for %s: %s", path, e)
+            continue
 
         logging.info("Watching %s (delay=%ds branch=%s)", path, delay, branch or "default")
+
+    if not backups:
+        logging.error("No valid directories to watch")
+        sys.exit(1)
 
     # Sync any changes that happened while daemon was offline
     for backup in backups:
         backup.on_change()
 
     def shutdown(signum, frame):
+        logging.debug("Received signal %d, shutting down", signum)
         sys.exit(0)
 
     signal.signal(signal.SIGTERM, shutdown)
