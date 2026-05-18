@@ -1,0 +1,236 @@
+#!/usr/bin/env python3
+"""
+git-auto-sync
+
+Watches configured directories and automatically commits/pushes changes to git
+after a period of inactivity. Never pulls.
+
+Linux only. Requires: python3-watchdog
+"""
+
+import argparse
+import json
+import logging
+import os
+import signal
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+
+try:
+    from watchdog.observers import Observer
+    from watchdog.events import FileSystemEventHandler, FileSystemEvent
+except ImportError:
+    print("Error: python3-watchdog is required.", file=sys.stderr)
+    print("  Install: sudo apt install python3-watchdog  (or: pip3 install watchdog)", file=sys.stderr)
+    sys.exit(1)
+
+DEFAULT_CONFIG_PATH = Path.home() / ".config" / "git-auto-sync" / "config.json"
+DEFAULT_DELAY = 300  # seconds
+
+
+class GitBackup:
+    def __init__(self, path: Path, delay_seconds: int, branch: str | None = None):
+        self.path = path.resolve()
+        self.delay_seconds = delay_seconds
+        self.branch = branch
+        self.timer: threading.Timer | None = None
+        self.lock = threading.Lock()
+        self.sync_lock = threading.Lock()
+        self.logger = logging.getLogger(f"git-auto-sync.{self.path.name}")
+
+    def on_change(self, event: FileSystemEvent | None = None):
+        """Called when a file system change is detected. Resets the debounce timer."""
+        with self.lock:
+            if self.timer is not None:
+                self.timer.cancel()
+            self.timer = threading.Timer(self.delay_seconds, self._commit)
+            self.timer.daemon = True
+            self.timer.start()
+            self.logger.debug("Change detected, timer reset to %ds", self.delay_seconds)
+
+    def _commit(self):
+        """Perform git add, commit (if needed), and push."""
+        with self.lock:
+            self.timer = None
+
+        with self.sync_lock:
+            self.logger.info("Running sync...")
+
+            if not (self.path / ".git").exists():
+                self.logger.error("Not a git repository, skipping")
+                return
+
+            try:
+                # Stage all changes (including deletes)
+                subprocess.run(
+                    ["git", "add", "-A"],
+                    cwd=self.path,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+
+                # Check if there is anything staged
+                diff_result = subprocess.run(
+                    ["git", "diff", "--cached", "--quiet"],
+                    cwd=self.path,
+                    capture_output=True,
+                    text=True,
+                )
+                if diff_result.returncode == 0:
+                    self.logger.info("No changes to commit")
+                    return
+
+                # Commit
+                timestamp = time.strftime("%Y-%m-%d %H:%M:%S %z")
+                commit_msg = f"auto-sync: {timestamp}"
+                subprocess.run(
+                    ["git", "commit", "-m", commit_msg],
+                    cwd=self.path,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                self.logger.info("Committed: %s", commit_msg)
+
+                # Push (never pull)
+                push_cmd = ["git", "push"]
+                if self.branch:
+                    push_cmd.extend(["origin", self.branch])
+
+                push_result = subprocess.run(
+                    push_cmd,
+                    cwd=self.path,
+                    capture_output=True,
+                    text=True,
+                )
+                if push_result.returncode == 0:
+                    self.logger.info("Push successful")
+                else:
+                    self.logger.error("Push failed: %s", push_result.stderr.strip())
+
+            except subprocess.CalledProcessError as e:
+                err = (e.stderr or e.stdout or str(e)).strip()
+                self.logger.error("Git command failed: %s", err)
+
+
+class EventHandler(FileSystemEventHandler):
+    def __init__(self, backup: GitBackup):
+        self.backup = backup
+
+    def on_any_event(self, event: FileSystemEvent):
+        # Ignore git's own internals and temp files
+        parts = Path(event.src_path).parts
+        if ".git" in parts:
+            return
+        if event.event_type == "opened":
+            return
+        self.backup.on_change(event)
+
+
+def load_config(path: Path) -> dict:
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    # Allow a top-level list as shorthand for directories
+    if isinstance(data, list):
+        return {"directories": data}
+    return data
+
+
+def setup_logging(verbose: bool):
+    level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Automatic git backup daemon (commit & push only, never pull)"
+    )
+    parser.add_argument(
+        "-c", "--config", type=Path, default=DEFAULT_CONFIG_PATH,
+        help="Path to config file (default: ~/.config/git-auto-sync/config.json)"
+    )
+    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
+    args = parser.parse_args()
+
+    setup_logging(args.verbose)
+
+    if not args.config.exists():
+        logging.error("Config file not found: %s", args.config)
+        logging.error("Create one or use --config to specify a path")
+        sys.exit(1)
+
+    try:
+        config = load_config(args.config)
+    except (json.JSONDecodeError, OSError) as e:
+        logging.error("Failed to load config: %s", e)
+        sys.exit(1)
+
+    default_delay = config.get("default_delay_seconds", DEFAULT_DELAY)
+    directories = config.get("directories", [])
+    if not directories:
+        logging.error("No directories configured")
+        sys.exit(1)
+
+    backups: list[GitBackup] = []
+    observers: list[Observer] = []
+
+    for entry in directories:
+        if isinstance(entry, str):
+            path = Path(entry).expanduser()
+            delay = default_delay
+            branch = None
+        elif isinstance(entry, dict):
+            path = Path(entry["path"]).expanduser()
+            delay = entry.get("delay_seconds", default_delay)
+            branch = entry.get("branch")
+        else:
+            logging.warning("Invalid config entry: %r", entry)
+            continue
+
+        if not path.is_dir():
+            logging.warning("Directory does not exist, skipping: %s", path)
+            continue
+
+        backup = GitBackup(path, delay, branch)
+        backups.append(backup)
+
+        handler = EventHandler(backup)
+        observer = Observer()
+        observer.schedule(handler, str(path), recursive=True)
+        observer.start()
+        observers.append(observer)
+
+        logging.info("Watching %s (delay=%ds branch=%s)", path, delay, branch or "default")
+
+    # Sync any changes that happened while daemon was offline
+    for backup in backups:
+        backup.on_change()
+
+    def shutdown(signum, frame):
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, shutdown)
+    signal.signal(signal.SIGINT, shutdown)
+
+    try:
+        while True:
+            signal.pause()
+    except (KeyboardInterrupt, SystemExit):
+        logging.info("Shutting down...")
+        for observer in observers:
+            observer.stop()
+        for observer in observers:
+            observer.join()
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
